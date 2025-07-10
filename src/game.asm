@@ -14,7 +14,7 @@ SPRITE_3_ADDR = oam + 12
 .byte 'N', 'E', 'S', $1a      ; "NES" followed by MS-DOS EOF marker
 .byte $02                     ; 2 x 16KB PRG-ROM banks
 .byte $01                     ; 1 x 8KB CHR-ROM bank
-.byte $00, $00                ; Mapper 0, no special features
+.byte $01, $00                ; Mapper 0, no special features
 
 ;*****************************************************************
 ; Define NES interrupt vectors
@@ -91,6 +91,23 @@ oam: .res 256	; sprite OAM data
 
 ; Non-Maskable Interrupt Handler - called during VBlank
 .proc nmi_handler
+    ; save registers
+    PHA
+    TXA
+    PHA
+    TYA
+    PHA
+
+    INC time
+    LDA time
+    CMP #60
+
+    ; restore registers
+    PLA
+    TAY
+    PLA
+    TAX
+    PLA
 
   RTI                     ; Return from interrupt (not using NMI yet)
 .endproc
@@ -168,7 +185,8 @@ remaining_loop:
     CPY #192                               ; Stop after 192 bytes (960 - 768)
     BNE remaining_loop
 
-  ;set text location
+ 	; draw some text on the screen
+
  	LDA PPU_STATUS ; reset address latch
  	LDA #$20 ; set PPU address to $208A (Row = 4, Column = 10)
  	STA PPU_ADDRESS
@@ -176,16 +194,6 @@ remaining_loop:
  	STA PPU_ADDRESS
 
   ; print text
- 	; draw some text on the screen
-  LDX #0
-textloop:
-  LDA hello_txt
-  STA PPU_VRAM_IO
-  INX
-  CMP #0
-  BEQ :+
-  JMP textloop
-:
 
   ; Reset scroll registers to 0,0 (needed after VRAM access)
   LDA #$00
@@ -197,6 +205,15 @@ textloop:
 .endproc
 
 .proc init_sprites
+
+  LDX #0
+  load_sprite:
+    LDA sprite_data, X
+    STA SPRITE_0_ADDR, X
+    INX
+    CPX #4
+    BNE load_sprite
+
   ; set sprite tiles
   LDA #1
   STA SPRITE_0_ADDR + SPRITE_OFFSET_TILE
@@ -207,10 +224,10 @@ textloop:
   LDA #4
   STA SPRITE_3_ADDR + SPRITE_OFFSET_TILE
 
-  LDA #128
+  LDA #20
   STA player_y
 
-  LDA #170
+  LDA #30
   STA player_x
 
   RTS
@@ -245,10 +262,10 @@ textloop:
   STA SPRITE_2_ADDR + SPRITE_OFFSET_Y
   STA SPRITE_3_ADDR + SPRITE_OFFSET_Y
 
-  ;LDA #$00
-  ;DEC scroll
-  LDA scroll
+  LDA #$00
   STA PPU_SCROLL                         ; Write horizontal scroll
+  DEC scroll
+  LDA scroll
   STA PPU_SCROLL                         ; Write vertical scroll
 
   ; Set OAM address to 0 — required before DMA or manual OAM writes
@@ -439,9 +456,14 @@ palette_data:
 ; Load nametable data
 nametable_data:
   .incbin "assets/screen.nam"
+sprite_data:
+.byte 30, 1, 0, 40
+.byte 30, 2, 0, 48
+.byte 38, 3, 0, 40
+.byte 38, 4, 0, 48
 
 hello_txt:
-.byte 'H','E','L','L','O',' ','H','E','L','P',' ','M','E' 0
+.byte 'H','E','L','L', 'O', 0
 
 ; Startup segment
 .segment "STARTUP"
