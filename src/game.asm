@@ -5,6 +5,7 @@ SPRITE_0_ADDR = oam + 0
 SPRITE_1_ADDR = oam + 4
 SPRITE_2_ADDR = oam + 8
 SPRITE_3_ADDR = oam + 12
+SPRITE_BALL_ADDR = oam + 16
 
 ;*****************************************************************
 ; Define NES cartridge Header
@@ -57,6 +58,10 @@ controller_1_released:  .res 1    ; Check if released
 game_state:             .res 1    ; Current game state
 player_x:               .res 1    ; Player X position
 player_y:               .res 1    ; Player Y position
+ball_x:                  .res 1
+ball_y:                  .res 1
+ball_dx:                 .res 1
+ball_dy:                 .res 1
 player_vel_x:           .res 1    ; Player X velocity
 player_vel_y:           .res 1    ; Player Y velocity
 score:                  .res 1    ; Score low byte
@@ -195,14 +200,24 @@ remaining_loop:
 
   ; print text
 
+  ; Ball
+  LDA ball_y
+  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_Y
+
+  LDA ball_x
+  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_X
+
   ; Reset scroll registers to 0,0 (needed after VRAM access)
   LDA #$00
   STA PPU_SCROLL                         ; Write horizontal scroll
+  DEC scroll
+  LDA scroll
   STA PPU_SCROLL                         ; Write vertical scroll
 
   RTS                                    ; Done
 
 .endproc
+
 
 .proc init_sprites
 
@@ -223,12 +238,25 @@ remaining_loop:
   STA SPRITE_2_ADDR + SPRITE_OFFSET_TILE
   LDA #4
   STA SPRITE_3_ADDR + SPRITE_OFFSET_TILE
+  LDA #5
+  ;STA SPRITE_PLAYER3_ADDR + SPRITE_OFFSET_TILE
+  LDA #6
+  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_TILE
 
-  LDA #20
+  LDA #128
+  STA player_x
+  LDA #190
   STA player_y
 
-  LDA #30
-  STA player_x
+  LDA #128
+  STA ball_x
+  LDA #100
+  STA ball_y
+
+  LDA #1
+  STA ball_dx
+  LDA #1
+  STA ball_dy
 
   RTS
 .endproc
@@ -245,6 +273,9 @@ remaining_loop:
 ;******************************************************************************
 
 .proc update_sprites
+
+
+
   ; Update OAM values
   LDA player_x
   STA SPRITE_0_ADDR + SPRITE_OFFSET_X
@@ -261,6 +292,12 @@ remaining_loop:
   ADC #8
   STA SPRITE_2_ADDR + SPRITE_OFFSET_Y
   STA SPRITE_3_ADDR + SPRITE_OFFSET_Y
+
+  LDA ball_y
+  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_Y
+
+  LDA ball_x
+  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_X
 
   LDA #$00
   STA PPU_SCROLL                         ; Write horizontal scroll
@@ -279,6 +316,41 @@ remaining_loop:
 
   RTS
 
+.endproc
+
+.proc update_ball
+  ; move ball
+  LDA ball_y
+  CLC
+  ADC ball_dy
+  STA ball_y
+  CMP #0
+  BNE NOT_HITTOP
+    LDA #1
+    STA ball_dy
+  NOT_HITTOP:
+    LDA ball_y
+    CMP #210
+    BNE NOT_HITBOTTOM
+      LDA #$FF
+      STA ball_dy
+  NOT_HITBOTTOM:
+    LDA ball_x
+    CLC
+    ADC ball_dx	; add the X velocity
+    STA ball_x   ; update ball_x position
+
+    CMP #0       ; have we hit the left border?
+    BNE NOT_HITLEFT
+        LDA #1   ; reverse direction
+        STA ball_dx
+NOT_HITLEFT:
+    LDA ball_x
+    CMP #248     ; have we hit the right border?
+    BNE NOT_HITRIGHT
+        LDA #$FF ; reverse direction (-1)
+        STA ball_dx
+NOT_HITRIGHT:
 .endproc
 
 .proc update_player
@@ -347,6 +419,8 @@ not_left:
 
 forever:
     JSR get_random
+    JSR update_ball
+    JSR update_player
 
     ; Wait for vertical blank before doing game logic and rendering updates
     wait_for_vblank
