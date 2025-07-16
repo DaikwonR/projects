@@ -6,6 +6,10 @@ SPRITE_1_ADDR = oam + 4
 SPRITE_2_ADDR = oam + 8
 SPRITE_3_ADDR = oam + 12
 SPRITE_BALL_ADDR = oam + 16
+SPRITE_BALL_2_ADDR = oam + 20
+SPRITE_BALL_3_ADDR = oam + 24
+SPRITE_BALL_4_ADDR = oam + 28
+
 
 ;*****************************************************************
 ; Define NES cartridge Header
@@ -58,10 +62,17 @@ controller_1_released:  .res 1    ; Check if released
 game_state:             .res 1    ; Current game state
 player_x:               .res 1    ; Player X position
 player_y:               .res 1    ; Player Y position
-ball_x:                  .res 1
-ball_y:                  .res 1
-ball_dx:                 .res 1
-ball_dy:                 .res 1
+
+ball_count:             .res 1    ; Number of active balls (1-4)
+ball_spawn_timer:       .res 1    ; Timer for spawning new balls
+ball_spawn_delay:       .res 1    ; Delay between ball spawns (in seconds)
+
+; Ball data arrays (replace your single ball variables with these)
+ball_x_array:           .res 4    ; X positions for up to 4 balls
+ball_y_array:           .res 4    ; Y positions for up to 4 balls
+ball_dx_array:          .res 4    ; X velocities for up to 4 balls
+ball_dy_array:          .res 4    ; Y velocities for up to 4 balls
+
 player_vel_x:           .res 1    ; Player X velocity
 player_vel_y:           .res 1    ; Player Y velocity
 score:                  .res 1    ; Score low byte
@@ -201,10 +212,10 @@ remaining_loop:
   ; print text
 
   ; Ball
-  LDA ball_y
+  ;LDA ball_y
   STA SPRITE_BALL_ADDR + SPRITE_OFFSET_Y
 
-  LDA ball_x
+  ;LDA ball_x
   STA SPRITE_BALL_ADDR + SPRITE_OFFSET_X
 
   ; Reset scroll registers to 0,0 (needed after VRAM access)
@@ -218,45 +229,126 @@ remaining_loop:
 
 .endproc
 
+.proc update_ball_spawning
+  ; Check if we should spawn a new ball
+  LDA ball_count
+  CMP #4                  ; Maximum 4 balls
+  BEQ done_spawning       ; Skip if at max
+
+  ; Decrement spawn timer
+  DEC ball_spawn_timer
+  BNE done_spawning       ; Not time to spawn yet
+
+  ; Reset timer
+  LDA ball_spawn_delay
+  STA ball_spawn_timer
+
+  ; Spawn new ball
+  LDX ball_count          ; Get current ball count as index
+
+  ; Set random position for new ball
+  JSR get_random
+  AND #$7F                ; Keep in range 0-127
+  CLC
+  ADC #64                 ; Add offset (64-191)
+  STA ball_x_array, X
+
+  JSR get_random
+  AND #$3F                ; Keep in range 0-63
+  CLC
+  ADC #50                 ; Add offset (50-113)
+  STA ball_y_array, X
+
+  ; Set random velocity for new ball
+  JSR get_random
+  AND #$01                ; 0 or 1
+  BEQ negative_dx
+  LDA #1
+  JMP set_dx
+negative_dx:
+  LDA #$FF                ; -1 in two's complement
+set_dx:
+  STA ball_dx_array, X
+
+  JSR get_random
+  AND #$01                ; 0 or 1
+  BEQ negative_dy
+  LDA #1
+  JMP set_dy
+negative_dy:
+  LDA #$FF                ; -1 in two's complement
+set_dy:
+  STA ball_dy_array, X
+
+  ; Increment ball count
+  INC ball_count
+
+done_spawning:
+  RTS
+.endproc
+
 
 .proc init_sprites
 
   LDX #0
   load_sprite:
     LDA sprite_data, X
-    STA SPRITE_0_ADDR, X
+    STA oam, X
     INX
-    CPX #4
+    CPX #20
     BNE load_sprite
 
-  ; set sprite tiles
   LDA #1
-  STA SPRITE_0_ADDR + SPRITE_OFFSET_TILE
-  LDA #2
-  STA SPRITE_1_ADDR + SPRITE_OFFSET_TILE
-  LDA #3
-  STA SPRITE_2_ADDR + SPRITE_OFFSET_TILE
-  LDA #4
-  STA SPRITE_3_ADDR + SPRITE_OFFSET_TILE
-  LDA #5
-  ;STA SPRITE_PLAYER3_ADDR + SPRITE_OFFSET_TILE
-  LDA #6
-  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_TILE
+  STA ball_count          ; Start with 1 ball
+
+  LDA #3                  ; Spawn new ball every 3 seconds
+  STA ball_spawn_delay
+  STA ball_spawn_timer    ; Initialize timer
+
+  ; Initialize first ball (replace your existing ball initialization)
+  LDA #128
+  STA ball_x_array        ; Ball 0 X position
+  LDA #100
+  STA ball_y_array        ; Ball 0 Y position
+  LDA #1
+  STA ball_dx_array       ; Ball 0 X velocity
+  LDA #1
+  STA ball_dy_array       ; Ball 0 Y velocity
+
+  ; Initialize remaining balls as inactive (off-screen)
+  LDX #1
+init_inactive_balls:
+  LDA #255                ; Off-screen Y position
+  STA ball_y_array, X
+  LDA #0
+  STA ball_x_array, X
+  STA ball_dx_array, X
+  STA ball_dy_array, X
+  INX
+  CPX #4
+  BNE init_inactive_balls
+
+  ; set sprite tiles
+  ;LDA #1
+  ;STA SPRITE_0_ADDR + SPRITE_OFFSET_TILE
+  ;LDA #2
+  ;STA SPRITE_1_ADDR + SPRITE_OFFSET_TILE
+  ;LDA #3
+  ;STA SPRITE_2_ADDR + SPRITE_OFFSET_TILE
+  ;LDA #4
+  ;STA SPRITE_3_ADDR + SPRITE_OFFSET_TILE
+  ;LDA #5
+  ;;STA SPRITE_PLAYER3_ADDR + SPRITE_OFFSET_TILE
+
+  ;LDA #6
+  ;STA SPRITE_BALL_ADDR + SPRITE_OFFSET_TILE
 
   LDA #128
   STA player_x
   LDA #190
   STA player_y
 
-  LDA #128
-  STA ball_x
-  LDA #100
-  STA ball_y
 
-  LDA #1
-  STA ball_dx
-  LDA #1
-  STA ball_dy
 
   RTS
 .endproc
@@ -272,9 +364,9 @@ remaining_loop:
 ;   - This is called during VBlank or with rendering disabled
 ;******************************************************************************
 
+ LDX #0
+
 .proc update_sprites
-
-
 
   ; Update OAM values
   LDA player_x
@@ -293,11 +385,60 @@ remaining_loop:
   STA SPRITE_2_ADDR + SPRITE_OFFSET_Y
   STA SPRITE_3_ADDR + SPRITE_OFFSET_Y
 
-  LDA ball_y
-  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_Y
+  CPX ball_count
+  BCS hide_ball           ; Hide inactive balls
 
-  LDA ball_x
-  STA SPRITE_BALL_ADDR + SPRITE_OFFSET_X
+  ; Calculate sprite address offset (each sprite = 4 bytes)
+  TXA
+  ASL                     ; X * 2
+  ASL                     ; X * 4
+  TAY                     ; Y = sprite offset
+
+  ; Update ball sprite position
+  LDA ball_y_array, X
+  STA oam + 16, Y         ; Y position (16 = first ball sprite offset)
+
+  LDA #6                  ; Ball tile number
+  STA oam + 17, Y         ; Tile index
+
+  LDA #0                  ; Palette 0
+  STA oam + 18, Y         ; Attributes
+
+  LDA ball_x_array, X
+  STA oam + 19, Y         ; X position
+
+  JMP next_ball_sprite
+
+hide_ball:
+  ; Hide inactive ball by moving off-screen
+  TXA
+  ASL                     ; X * 2
+  ASL                     ; X * 4
+  TAY                     ; Y = sprite offset
+
+  LDA #255                ; Off-screen Y
+  STA oam + 16, Y
+
+next_ball_sprite:
+  INX
+  CPX #4                  ; Check all 4 possible balls
+  BNE update_sprites
+
+; MODIFY YOUR EXISTING NMI HANDLER - ADD THIS AFTER INC time:
+  ; Add this section after your existing time increment
+  LDA time
+  CMP #60
+  ;BNE skip_second_update
+
+  ; Reset frame counter and increment seconds
+  LDA #0
+  STA time
+  INC seconds
+
+  ; Update ball spawning timer if it's based on seconds
+  LDA ball_spawn_timer
+  ;BEQ skip_timer_dec
+  DEC ball_spawn_timer
 
   LDA #$00
   STA PPU_SCROLL                         ; Write horizontal scroll
@@ -319,38 +460,58 @@ remaining_loop:
 .endproc
 
 .proc update_ball
-  ; move ball
-  LDA ball_y
-  CLC
-  ADC ball_dy
-  STA ball_y
-  CMP #0
-  BNE NOT_HITTOP
-    LDA #1
-    STA ball_dy
-  NOT_HITTOP:
-    LDA ball_y
-    CMP #210
-    BNE NOT_HITBOTTOM
-      LDA #$FF
-      STA ball_dy
-  NOT_HITBOTTOM:
-    LDA ball_x
-    CLC
-    ADC ball_dx	; add the X velocity
-    STA ball_x   ; update ball_x position
+  LDX #0                  ; Start with ball 0
 
-    CMP #0       ; have we hit the left border?
-    BNE NOT_HITLEFT
-        LDA #1   ; reverse direction
-        STA ball_dx
-NOT_HITLEFT:
-    LDA ball_x
-    CMP #248     ; have we hit the right border?
-    BNE NOT_HITRIGHT
-        LDA #$FF ; reverse direction (-1)
-        STA ball_dx
-NOT_HITRIGHT:
+ball_loop:
+  ; Check if this ball is active
+  CPX ball_count
+  BCS next_ball           ; Skip if X >= ball_count
+
+  ; Move ball Y
+  LDA ball_y_array, X
+  CLC
+  ADC ball_dy_array, X
+  STA ball_y_array, X
+
+  ; Check top collision
+  CMP #0
+  BNE check_bottom
+  LDA #1
+  STA ball_dy_array, X
+  JMP check_x_movement
+
+check_bottom:
+  CMP #210
+  BNE check_x_movement
+  LDA #$FF
+  STA ball_dy_array, X
+
+check_x_movement:
+  ; Move ball X
+  LDA ball_x_array, X
+  CLC
+  ADC ball_dx_array, X
+  STA ball_x_array, X
+
+  ; Check left collision
+  CMP #0
+  BNE check_right
+  LDA #1
+  STA ball_dx_array, X
+  JMP next_ball
+
+check_right:
+  CMP #248
+  BNE next_ball
+  LDA #$FF
+  STA ball_dx_array, X
+
+next_ball:
+  INX
+  CPX #4                  ; Check all 4 possible balls
+  BNE ball_loop
+
+  RTS
 .endproc
 
 .proc update_player
@@ -421,6 +582,7 @@ forever:
     JSR get_random
     JSR update_ball
     JSR update_player
+    JSR update_ball_spawning
 
     ; Wait for vertical blank before doing game logic and rendering updates
     wait_for_vblank
@@ -535,6 +697,8 @@ sprite_data:
 .byte 30, 2, 0, 48
 .byte 38, 3, 0, 40
 .byte 38, 4, 0, 48
+
+.byte 50, 6, 0, 100
 
 hello_txt:
 .byte 'H','E','L','L', 'O', 0
